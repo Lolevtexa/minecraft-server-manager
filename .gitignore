@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Env
+.env
+*.env
+
+# IDE
+.vscode/
+*.sw?
+.idea/
+
+# Бэкапы миров и логов
+world_backups/
+*.zip
+*.log
+
+# Сервисные файлы
+*.sqlite3
+
+# MacOS/Linux
+.DS_Store
+
+# venv
+.venv/
+venv/
+env/
