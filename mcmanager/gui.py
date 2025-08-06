@@ -2,9 +2,74 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import threading
 import time
+import os
 
 from mcmanager.tunnel import TunnelManager
 from mcmanager.server import ServerManager
+from mcmanager.config_manager import ConfigManager
+
+class SettingsWindow(tk.Toplevel):
+    def __init__(self, parent, config, on_save):
+        super().__init__(parent)
+        self.title("Настройки")
+        self.config_dict = config
+        self.on_save = on_save
+        self.entries = {}
+
+        sections = {
+            'server': {
+                'jar_file': 'Jar-файл (ядро сервера)',
+                'mem_opts':  'Параметры памяти'
+            },
+            'paths': {
+                'server_files': 'Папка с файлами сервера',
+                'backups':      'Папка с резервными копиями'
+            },
+            'tunnel': {
+                'user':        'SSH-пользователь',
+                'host':        'SSH-хост',
+                'local_port':  'Локальный порт',
+                'remote_port': 'Удалённый порт'
+            }
+        }
+
+        row = 0
+        for section, params in sections.items():
+            lbl = tk.Label(self, text=section.capitalize(), font=('Arial', 10, 'bold'))
+            lbl.grid(row=row, column=0, columnspan=2, sticky='w', pady=(10,0))
+            row += 1
+            for key, label in params.items():
+                tk.Label(self, text=label).grid(row=row, column=0, sticky='e', padx=5, pady=2)
+                val = str(self.config_dict.get(section, {}).get(key, ""))
+                ent = tk.Entry(self)
+                ent.insert(0, val)
+                ent.grid(row=row, column=1, sticky='we', padx=5, pady=2)
+                self.entries[f"{section}.{key}"] = ent
+                row += 1
+
+        btn_frame = tk.Frame(self)
+        btn_frame.grid(row=row, column=0, columnspan=2, pady=10)
+        tk.Button(btn_frame, text="Сохранить", command=self._save).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Отмена",   command=self.destroy).pack(side=tk.LEFT)
+        self.columnconfigure(1, weight=1)
+
+    def _save(self):
+        # Считываем значения и приводим порты к int
+        for full_key, ent in self.entries.items():
+            section, key = full_key.split('.')
+            val = ent.get().strip()
+            if section == 'tunnel' and key in ('local_port', 'remote_port'):
+                try:
+                    val = int(val)
+                except ValueError:
+                    messagebox.showerror("Ошибка", f"Поле «{key}» должно быть числом.")
+                    return
+            self.config_dict.setdefault(section, {})[key] = val
+
+        # Сохраняем и закрываем
+        self.on_save(self.config_dict)
+        messagebox.showinfo("Настройки", "Настройки сохранены.\nПерезапустите приложение для применения.")
+        self.destroy()
 
 class AppGUI:
     def __init__(self, config):
@@ -23,7 +88,7 @@ class AppGUI:
         self.ssh_status    = tk.Label(self.root, text="SSH-туннель: не запущен", fg="goldenrod")
         self.ssh_status.pack(pady=2)
 
-        # Внутренние флаги для статусов
+        # Флаги статусов
         self.server_starting = False
         self.server_stopping = False
         self.tunnel_starting = False
@@ -33,13 +98,24 @@ class AppGUI:
         # Менеджеры
         tcfg = config['tunnel']
         scfg = config['server']
-        self.server = ServerManager(**scfg, console_append=self._on_server_output, on_ready=self._on_server_ready)
-        self.tunnel = TunnelManager(**tcfg, console_append=self._on_tunnel_output)
+        paths = config['paths']
+        self.server = ServerManager(
+            server_dir=paths['server_files'],
+            jar_file=scfg['jar_file'],
+            mem_opts=scfg['mem_opts'],
+            console_append=self._on_server_output,
+            on_ready=self._on_server_ready
+        )
+        self.tunnel = TunnelManager(
+            user=tcfg['user'], host=tcfg['host'],
+            local_port=tcfg['local_port'], remote_port=tcfg['remote_port'],
+            console_append=self._on_tunnel_output
+        )
 
         # Кнопки
         self._create_buttons()
 
-        # Поток обновления статусов (мониторинг)
+        # Монитор статусов
         threading.Thread(target=self._monitor_statuses, daemon=True).start()
 
     def _on_server_output(self, text):
@@ -48,7 +124,7 @@ class AppGUI:
             self.server_starting = False
         if "Сервер остановлен" in text:
             self.server_stopping = False
-            self.server_ready = False  # если остановился, явно не готов
+            self.server_ready = False
         self._update_status_labels()
 
     def _on_server_ready(self):
@@ -74,15 +150,15 @@ class AppGUI:
         frame.pack(pady=5)
 
         actions = [
-            ("Start Server", self._start_server),
-            ("Stop Server",  self._stop_server),
-            ("Start Tunnel", self._start_tunnel),
-            ("Stop Tunnel",  self._stop_tunnel),
-            ("Restart Server", self._restart_server),
-            ("New World",    lambda: self.server.restart_with_new_world(
-                                  self.config['paths']['world'],
-                                  self.config['paths']['backups'])),
-            ("Help",         self._show_help),
+            ("Start Server",  self._start_server),
+            ("Stop Server",   self._stop_server),
+            ("Start Tunnel",  self._start_tunnel),
+            ("Stop Tunnel",   self._stop_tunnel),
+            ("Restart Server",self._restart_server),
+            ("New World",     lambda: self.server.restart_with_new_world(
+                                    self.config['paths']['backups'])),
+            ("Settings",      self._open_settings),
+            ("Help",          self._show_help),
         ]
         for i, (txt, cmd) in enumerate(actions):
             tk.Button(frame, text=txt, command=cmd).grid(row=0, column=i, padx=5)
@@ -131,9 +207,12 @@ class AppGUI:
             "Start Tunnel   – запустить SSH-туннель\n"
             "Stop Tunnel    – остановить SSH-туннель\n"
             "Restart Server – перезапустить сервер\n"
-            "New World      – перезапустить с новым миром (архивация)\n"
+            "New World      – перезапустить с новым миром (архивация из server_files/world)\n"
         )
         messagebox.showinfo("Help", msg)
+
+    def _open_settings(self):
+        SettingsWindow(self.root, self.config, ConfigManager.save_config)
 
     def _update_status_labels(self):
         # SERVER

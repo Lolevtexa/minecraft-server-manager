@@ -1,0 +1,16 @@
+{
+    "tunnel": {
+        "user": "",
+        "host": "",
+        "local_port": 25565,
+        "remote_port": 25565
+    },
+    "server": {
+        "jar_file": "paper.jar",
+        "mem_opts": "-Xms512M -Xmx2G"
+    },
+    "paths": {
+        "server_files": "server_files",
+        "backups": "world_backups"
+    }
+}

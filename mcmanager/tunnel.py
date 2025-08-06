@@ -20,7 +20,7 @@ class TunnelManager:
                 self.console("SSH-туннель уже работает или запускается.")
                 return
             self.starting = True
-            self.manual_stop = False  # СБРОС при новом запуске!
+            self.manual_stop = False
         threading.Thread(target=self._connect_once, daemon=True).start()
 
     def _connect_once(self):
@@ -29,16 +29,15 @@ class TunnelManager:
                 if self.is_running() or self.manual_stop:
                     self.starting = False
                     return
-            try:
-                cmd = [
-                    "ssh", "-N",
-                    "-R", f"{self.local_port}:localhost:{self.remote_port}",
-                    f"{self.user}@{self.host}"
-                ]
-                self.proc = subprocess.Popen(cmd)
-                self.console("SSH-туннель установлен.")
-            except Exception as e:
-                self.console(f"Ошибка туннеля: {e}")
+            cmd = [
+                "ssh", "-N",
+                "-R", f"{self.local_port}:localhost:{self.remote_port}",
+                f"{self.user}@{self.host}"
+            ]
+            self.proc = subprocess.Popen(cmd)
+            self.console("SSH-туннель установлен.")
+        except Exception as e:
+            self.console(f"Ошибка туннеля: {e}")
         finally:
             with self.lock:
                 self.starting = False
