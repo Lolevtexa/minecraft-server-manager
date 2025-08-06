@@ -28,3 +28,5 @@ world_backups/
 .venv/
 venv/
 env/
+
+config.json
