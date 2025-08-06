@@ -7,7 +7,7 @@
     },
     "server": {
         "jar_file": "paper.jar",
-        "mem_opts": "-Xms512M -Xmx2G"
+        "mem_opts": "-Xms512M -Xmx2048M"
     },
     "paths": {
         "server_files": "server_files",
